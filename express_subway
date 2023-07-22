@@ -1,0 +1,105 @@
+
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import matplotlib.pyplot as plt
+
+# 데이터 읽기 
+df_station = pd.read_csv('/content/sample_data/station_time.csv')
+df_arrival = pd.read_csv('/content/sample_data/subway_arrival_1.csv', encoding='CP949')
+
+# 자료형 변환
+df_station['열차코드'] = df_station['열차코드'].astype('str')
+df_station['호선'] = df_station['호선'].astype('str')
+
+df_arrival['btrainNo'] = df_arrival['btrainNo'].astype('str')
+# 급행이 있는 호선 추출 
+express_line_station = ['1','4','9','수인분당선','경춘선','경의선']
+df_express_station = df_station[df_station['호선'].isin(express_line_station )]
+df_express_station = df_express_station.dropna(subset=['열차도착시간'])
+df_express_station['방향']  = np.where(df_express_station['방향']  == 'IN', '내선', df_express_station['방향'])
+df_express_station['방향']  = np.where(df_express_station['방향']  == 'UP', '상행', df_express_station['방향'])
+df_express_station['방향']  = np.where(df_express_station['방향']  == 'DOWN', '외선', df_express_station['방향'])
+df_express_station['방향']  = np.where(df_express_station['방향']  == 'OUT', '하행', df_express_station['방향'])
+df_express_station = df_express_station[df_express_station['주중주말']=='DAY']
+
+express_line_arrival = [1001,1004,1009,1063,1067,1075,1077]
+df_express_arrival = df_arrival[df_arrival['subwayId'].isin(express_line_arrival)]
+df_express_arrival = df_express_arrival[df_express_arrival['arvlCd']==1]
+
+# 필요한 열만 추출 
+df_express_arrival = df_express_arrival[['recptnDt','btrainNo','bstatnNm','arvlCd','statnNm','updnLine']]
+df_express_arrival.columns = ['열차도착예정시간', '열차코드','종착지하철역명','도착코드','역사명','방향']
+
+print(df_express_arrival)
+# 역사코드와 열차코드를 기준으로 내부 조인
+df_express_merged = pd.merge(df_express_station, df_express_arrival, left_on=['열차코드','방향','역사명'], right_on=['열차코드','방향','역사명'], how='inner').drop_duplicates()
+
+df_express_merged['시간차이'] = 0
+# 시간 차이가 많이 나는 행 추출 
+
+for index, row in df_express_merged.iterrows():
+  time_str1 = row['열차도착예정시간']
+  time_str2 = row['열차도착시간']
+  date_part = time_str1[:10]
+  time_str2 = date_part + ' ' + time_str2
+
+  time1 = datetime.strptime(time_str1, '%Y-%m-%d %H:%M:%S')
+  time2 = datetime.strptime(time_str2, '%Y-%m-%d %H:%M:%S')
+
+  time_difference = (time1 - time2).total_seconds()
+  df_express_merged.at[index, '시간차이'] = time_difference
+
+
+# 5분 기준으로 연착행 분리 
+df_express_delayed = df_express_merged[df_express_merged['시간차이'] >= 300]
+df_express_none_delayed = df_express_merged[df_express_merged['시간차이'] < 300]
+print(df_express_delayed)
+# 연착과 정상도착 분리 
+count_delayed = len(df_express_delayed)
+count_none_delayed = len(df_express_none_delayed)
+
+# 그래프 그리기
+plt.figure(figsize=(8, 6)) 
+bar_width = 0.175  
+
+plt.bar(np.arange(1) - 0.125, [count_delayed], color='green', label='연착', width=bar_width,)
+plt.bar(np.arange(1) + 0.125, [count_none_delayed], color='blue', label='정상', width=bar_width)
+
+plt.title('연착과 정상도착 수치')
+plt.ylabel('총합')
+plt.xticks([])
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+
+df_line1 = df_express_delayed[df_express_delayed['호선'] == '1']
+df_line4 = df_express_delayed[df_express_delayed['호선'] == '4']
+df_line9 = df_express_delayed[df_express_delayed['호선'] == '9']
+df_line_gyeongui = df_express_delayed[df_express_delayed['호선'] == '경의선']
+df_line_gyeongchun= df_express_delayed[df_express_delayed['호선'] == '경춘선']
+df_line_suin = df_express_delayed[df_express_delayed['호선'] == '수인분당선']
+
+line_dfs = [df_line1, df_line4, df_line9, df_line_gyeongui, df_line_gyeongchun, df_line_suin]
+line_name = ['1호선','4호선','6호선','경의선','경춘선','수인분당선']
+colors = ['blue', 'green', 'red', 'purple', 'orange', 'brown']
+
+plt.figure(figsize=(10, 6))
+for i, df in enumerate(line_dfs):
+    plt.scatter(df.index, df['시간차이'], color=colors[i], label=line_name[i])
+
+plt.title('연착정도 그래프')
+plt.xticks([])
+plt.ylabel('연착정도 (초)')
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+df_express = df_station[df_station['급행여부'] == 1]
+sr_express_names= df_express['역사명'].drop_duplicates()
+print(sr_express_names)
+
+df_none_express = df_express_merged[df_express_merged['급행여부'] == 0]
+df_none_express_station = df_none_express[df_none_express['역사명'].isin(sr_express_names)]
+print(df_none_express_station)
