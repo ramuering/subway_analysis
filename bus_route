@@ -1,0 +1,60 @@
+import pandas as pd 
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+ 
+df_location = pd.read_csv('bus_location_final.csv', encoding='cp949')
+df_route = pd.read_csv('bus_route.csv', encoding='utf-8')
+
+df_location.rename(columns={'노드 ID':'NODE_ID'}, inplace=True)
+df_location = df_location.drop(['정류소명'],axis=1)
+print(df_location)
+print(df_route)
+
+
+df_merged = pd.merge(df_location, df_route, on='NODE_ID', how='inner')
+df_merged.drop_duplicates()
+df_merged['노선 개수'] = 1 
+
+df_merged = df_merged[['NODE_ID','정류소명','정류소 타입','행정동','노선 개수']]
+
+df_result = df_merged.groupby('행정동', as_index=False)['노선 개수'].sum()
+df_result = df_result[df_result['행정동'] != '서울']
+df_result = df_result.sort_values(by='노선 개수', ascending=False)
+
+df_result_average = df_result['노선 개수'].sum() / df_result['행정동'].nunique()
+print(df_result_average)
+
+
+plt.rcParams['font.family'] = 'Malgun Gothic'
+fig = go.Figure(data=[go.Bar(x=df_result['행정동'], y=df_result['노선 개수'], marker_color='skyblue')])
+
+fig.update_layout(
+    title='행정동 별 노선 개수',
+    xaxis_title='',
+    yaxis_title='노선 개수',
+    xaxis=dict(tickangle=-45),
+    margin=dict(l=50, r=50, t=50, b=50),  
+    width=800, 
+    height=600  
+)
+
+fig.update_xaxes(rangeslider=dict(visible=True))
+
+fig.add_shape(
+    type='line',
+    x0=-0.5, x1=len(df_result['행정동']) - 0.5, y0=df_result_average, y1=df_result_average,
+    line=dict(color='red', width=2)
+)
+
+fig.add_annotation(
+    x=len(df_result['행정동']) - 0.5, y=df_result_average,
+    text=f'평균 노선 개수: {df_result_average}',
+    font=dict(size=12, color='red'),
+    showarrow=True,  
+    arrowhead=4,     
+    arrowsize=2,     
+    arrowwidth=1,    
+    arrowcolor='red' 
+)
+
+fig.show()
