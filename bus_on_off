@@ -1,0 +1,96 @@
+import pandas as pd
+import plotly.graph_objects as go
+
+df_location = pd.read_csv('bus_location_final.csv', encoding='cp949')
+df_on_off = pd.read_csv('bus_on_off.csv', encoding='cp949')
+
+
+df_on_off['승차_총_승객수'] = 0
+df_on_off = df_on_off[(df_on_off['사용년월'] <= 202212) & (df_on_off['사용년월'] >= 202201)]
+
+df_on_off['총_승차_승객수'] = df_on_off.iloc[:, 6:53:2].sum(axis=1)
+df_on_off['총_하차_승객수'] = df_on_off.iloc[:, 7:53:2].sum(axis=1)
+
+df_on_off = df_on_off[['노선명','역명','총_승차_승객수','총_하차_승객수','표준버스정류장ID']]
+df_on_off = df_on_off.groupby('표준버스정류장ID', as_index=False)[['총_승차_승객수','총_하차_승객수']].sum()
+
+df_on_off.rename(columns={'표준버스정류장ID':'노드 ID'}, inplace=True)
+df_merged = pd.merge(df_location, df_on_off, on='노드 ID', how='inner')
+df_merged= df_merged[df_merged['행정동'] != '서울']
+
+df_result = df_merged.groupby('행정동', as_index=False)[['총_승차_승객수','총_하차_승객수']].sum()
+df_result = df_result.sort_values(by='총_승차_승객수', ascending=False)
+
+df_on_average = df_result['총_승차_승객수'].sum() / df_result['행정동'].nunique()
+df_off_average = df_result['총_하차_승객수'].sum() / df_result['행정동'].nunique()
+
+fig = go.Figure()
+
+fig.add_trace(go.Bar(
+    x=df_result['행정동'],
+    y=df_result['총_승차_승객수'],
+    marker_color='red',
+    name='총 승차 승객수'
+))
+
+fig.add_trace(go.Bar(
+    x=df_result['행정동'],
+    y=df_result['총_하차_승객수'],
+    marker_color='blue',
+    name='총 하차 승객수'
+))
+
+fig.update_layout(
+    title='행정동 별 총 승차 승객수와 총 하차 승객수',
+    xaxis_title='',
+    yaxis_title='승객 수',
+    barmode='group',
+    xaxis=dict(tickangle=-45),
+    margin=dict(l=50, r=50, t=50, b=50),
+    width=800,
+    height=600
+)
+
+fig.update_xaxes(rangeslider_visible=True)
+
+fig.add_shape(
+    type='line',
+    x0=df_result['행정동'].iloc[0],
+    x1=df_result['행정동'].iloc[-1],
+    y0=df_on_average,
+    y1=df_on_average,
+    line=dict(color='red', width=2),
+)
+
+fig.add_shape(
+    type='line',
+    x0=df_result['행정동'].iloc[0],
+    x1=df_result['행정동'].iloc[-1],
+    y0=df_off_average,
+    y1=df_off_average,
+    line=dict(color='blue', width=2),
+)
+
+fig.add_annotation(
+    x=df_result['행정동'].iloc[-1],
+    y=df_on_average,
+    text=f"평균 승차 승객수: {df_on_average:.0f}",
+    showarrow=True,
+    arrowhead=1,
+    ax=0,
+    ay=-40,
+    font=dict(size=12, color='red')
+)
+
+fig.add_annotation(
+    x=df_result['행정동'].iloc[-1],
+    y=df_off_average,
+    text=f"평균 하차 승객수: {df_off_average:.0f}",
+    showarrow=True,
+    arrowhead=1,
+    ax=0,
+    ay=40,
+    font=dict(size=12, color='blue')
+)
+
+fig.show()
